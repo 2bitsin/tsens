@@ -1,6 +1,8 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <Arduino.h>
+#include <ArduinoOTA.h>
+#include <ESP8266mDNS.h>
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
 
@@ -20,18 +22,16 @@ struct any
 ///   CONFIG
 ////////////////////////////////////////////////////////////////
 
-const static char G_hostname[] = "Sensor_ID0000";
 const static std::uint32_t G_magic = 'SENS';
 const static std::uint32_t G_sensor_id = 0;
 const static std::uint32_t G_DS18B20 = 0x0D518820;
 
 const static char G_prefix[] = "KS10G30";
 const static char G_password[] = "dominelis";
+const static char G_otapwd[] = "LimitBreak1024";
 
 const static unsigned short G_tempport = 10000;
 const static auto G_tick = std::chrono::seconds(1);
-
-static uint32_t G_address[2] = {G_sensor_id, 0};
 
 ////////////////////////////////////////////////////////////////
 ///     VARIABLES
@@ -39,8 +39,11 @@ static uint32_t G_address[2] = {G_sensor_id, 0};
 
 OneWire ow(5);
 DallasTemperature ds(&ow);
+ArduinoOTAClass ota;
 any (*loop_) () = nullptr; 
 int retries_ = 0;
+static uint32_t G_address[2] = {G_sensor_id, 0};
+static char G_hostname[128] = "";
 
 ////////////////////////////////////////////////////////////////
 ///     CODE
@@ -52,15 +55,24 @@ any exec();
 
 void setup() {
   // put your setup code here, to run once:
+  static char hname[128];
+  
   Serial.begin(115200);
-  ds.begin();
+  ds.begin();    
   if (!ds.getAddress((uint8_t*)&G_address[0], 0))
   {
     G_address[0] = G_sensor_id;
     G_address[1] = 0;
     Serial.println("Failed to identify sensor.");
   }
-
+  sprintf(G_hostname, "sens%08X%08X", G_address[1], G_address[0]);
+  WiFi.hostname(G_hostname);
+    MDNS.begin(G_hostname);  
+    ota.begin();  
+    ota.setPassword(G_otapwd);
+    ota.setHostname(G_hostname);
+    ota.setPort(G_tempport-1);
+  
   loop_ = &scan;
 }
 
@@ -130,9 +142,11 @@ any wait()
 {
   Serial.printf("(Re)trying %d ...\n", retries_);  
   if (WiFi.status() == WL_CONNECTED)
+  {
     return loop_ = &exec;    
+  }
   if (--retries_ < 1)
-    return loop_ = &scan;    
+    return loop_ = &scan;
   return loop_;
 }
 
@@ -146,7 +160,14 @@ any exec()
 
 void loop () 
 {
-  auto now_ = std::chrono::steady_clock::now();
+  using namespace std::chrono;
+  auto now_ = steady_clock::now();
   loop_();  
-  wait_until(now_ + G_tick);
+  while(steady_clock::now() < (now_ + G_tick))
+  { 
+    ota.handle();
+    MDNS.update();
+    delay(100);
+  }
+  //wait_until(now_ + G_tick);
 }
