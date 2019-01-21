@@ -23,8 +23,8 @@ struct any
 ////////////////////////////////////////////////////////////////
 
 const static std::uint32_t G_magic = 'SENS';
-const static std::uint32_t G_sensor_id = 0;
-const static std::uint32_t G_DS18B20 = 0x0D518820;
+const static std::uint32_t G_sensor_id = 2;
+const static std::uint32_t G_DS18B20 = 0x0D518B20;
 
 const static char G_prefix[] = "KS10G30";
 const static char G_password[] = "dominelis";
@@ -40,10 +40,11 @@ const static auto G_tick = std::chrono::seconds(1);
 OneWire ow(5);
 DallasTemperature ds(&ow);
 ArduinoOTAClass ota;
-any (*loop_) () = nullptr; 
-int retries_ = 0;
-static uint32_t G_address[2] = {G_sensor_id, 0};
+
 static char G_hostname[128] = "";
+static uint32_t G_address[2] = {G_sensor_id, 0};
+int retries_ = 0;
+any (*loop_) () = nullptr; 
 
 ////////////////////////////////////////////////////////////////
 ///     CODE
@@ -53,9 +54,17 @@ any wait();
 any scan();
 any exec();
 
+void setup_services()
+{
+  MDNS.begin(G_hostname, WiFi.localIP());  
+  ota.begin();  
+  ota.setPassword(G_otapwd);
+  ota.setHostname(G_hostname);
+  ota.setPort(G_tempport-1);
+}
+
 void setup() {
   // put your setup code here, to run once:
-  static char hname[128];
   
   Serial.begin(115200);
   ds.begin();    
@@ -65,14 +74,8 @@ void setup() {
     G_address[1] = 0;
     Serial.println("Failed to identify sensor.");
   }
-  sprintf(G_hostname, "sens%08X%08X", G_address[1], G_address[0]);
+  sprintf(G_hostname, "node_%08x%08x", G_address[1], G_address[0]);
   WiFi.hostname(G_hostname);
-    MDNS.begin(G_hostname);  
-    ota.begin();  
-    ota.setPassword(G_otapwd);
-    ota.setHostname(G_hostname);
-    ota.setPort(G_tempport-1);
-  
   loop_ = &scan;
 }
 
@@ -85,7 +88,7 @@ void wait_until(std::chrono::steady_clock::time_point t)
   delay(dt.count());
 }
 
-void send(float temp)
+void send(int32_t temp)
 {
   std::uint32_t buffer [] = 
   {
@@ -93,7 +96,7 @@ void send(float temp)
     G_DS18B20,
     G_address[0],
     G_address[1],
-    std::uint32_t (temp * 0x10000)
+    reinterpret_cast<const int32_t&>(temp)
   };
 
   WiFiUDP udp;
@@ -143,6 +146,8 @@ any wait()
   Serial.printf("(Re)trying %d ...\n", retries_);  
   if (WiFi.status() == WL_CONNECTED)
   {
+    Serial.printf("Connected, hostname: %s\n", G_hostname);
+    setup_services();
     return loop_ = &exec;    
   }
   if (--retries_ < 1)
@@ -152,22 +157,25 @@ any wait()
 
 any exec()
 {
+  const static R = 1.0f/128.0f;
+  uint8_t buff[16];
   ds.requestTemperatures();
-  auto t = ds.getTempCByIndex(0);
+  ds.getAddress(buff, 0);
+  auto t = ds.getTemp(buff);
   send(t);
-  Serial.printf("DS18B20; %08X-%08X; %f\n", G_address[1], G_address[0], t);
+  Serial.printf("DS18B20; %08X-%08X; %f\n", G_address[1], G_address[0], t * R);
 }
 
 void loop () 
 {
   using namespace std::chrono;
-  auto now_ = steady_clock::now();
+  auto next_ = steady_clock::now() + G_tick;
   loop_();  
-  while(steady_clock::now() < (now_ + G_tick))
+  yield();  
+  while(steady_clock::now() < next_)
   { 
     ota.handle();
     MDNS.update();
-    delay(100);
+    yield();
   }
-  //wait_until(now_ + G_tick);
 }
