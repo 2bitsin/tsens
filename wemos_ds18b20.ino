@@ -23,12 +23,12 @@ struct any
 ////////////////////////////////////////////////////////////////
 
 const static std::uint32_t G_magic = 'SENS';
-const static std::uint32_t G_sensor_id = 2;
+const static std::uint32_t G_sensor_id = 0;
 const static std::uint32_t G_DS18B20 = 0x0D518B20;
 
-const static char G_prefix[] = "KS10G30";
-const static char G_password[] = "dominelis";
-const static char G_otapwd[] = "LimitBreak1024";
+const static char G_prefix[] = "*****";
+const static char G_password[] = "******";
+const static char G_otapwd[] = "******";
 
 const static unsigned short G_tempport = 10000;
 const static auto G_tick = std::chrono::seconds(1);
