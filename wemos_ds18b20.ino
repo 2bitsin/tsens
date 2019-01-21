@@ -6,7 +6,6 @@
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
 
-#include <functional>
 #include <map>
 #include <string>
 #include <chrono>
@@ -26,9 +25,13 @@ const static std::uint32_t G_magic = 'SENS';
 const static std::uint32_t G_sensor_id = 0;
 const static std::uint32_t G_DS18B20 = 0x0D518B20;
 
-const static char G_prefix[] = "*****";
-const static char G_password[] = "******";
-const static char G_otapwd[] = "******";
+#include "Config.h"
+/*
+ *  const static char G_prefix[]    = "*****";
+ *  const static char G_password[]  = "*****";
+ *  const static char G_otapwd[]    = "*****";
+ * 
+ */
 
 const static unsigned short G_tempport = 10000;
 const static auto G_tick = std::chrono::seconds(1);
@@ -38,6 +41,7 @@ const static auto G_tick = std::chrono::seconds(1);
 ////////////////////////////////////////////////////////////////
 
 OneWire ow(5);
+#include <functional>
 DallasTemperature ds(&ow);
 ArduinoOTAClass ota;
 
@@ -58,15 +62,15 @@ void setup_services()
 {
   MDNS.begin(G_hostname, WiFi.localIP());  
   ota.begin();  
-  ota.setPassword(G_otapwd);
-  ota.setHostname(G_hostname);
-  ota.setPort(G_tempport-1);
 }
 
 void setup() {
   // put your setup code here, to run once:
   
   Serial.begin(115200);
+  ota.setPassword(G_otapwd);
+  ota.setHostname(G_hostname);
+  ota.setPort(G_tempport-1);
   ds.begin();    
   if (!ds.getAddress((uint8_t*)&G_address[0], 0))
   {
@@ -108,10 +112,10 @@ void send(int32_t temp)
   udp.beginPacket(ip, G_tempport + 1);
   udp.printf(R"({
     "magic": "SENS", 
-    "sensor_type": G_DS18B20, 
+    "sensor_type": "0x%08X", 
     "sensor_id": "%08X-%08X", 
-    "value": "%f"
-  })", G_address[1], G_address[0], temp);
+    "value": "%i"
+  })", G_DS18B20, G_address[1], G_address[0], temp);
   udp.endPacket();
 }
 
@@ -157,7 +161,7 @@ any wait()
 
 any exec()
 {
-  const static R = 1.0f/128.0f;
+  const static auto R = 1.0f/128.0f;
   uint8_t buff[16];
   ds.requestTemperatures();
   ds.getAddress(buff, 0);
