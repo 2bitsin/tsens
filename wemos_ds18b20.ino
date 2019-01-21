@@ -108,7 +108,7 @@ void send(int32_t temp)
   udp.beginPacket(ip, G_tempport + 1);
   udp.printf(R"({
     "magic": "SENS", 
-    "sensor_type": "DS18B20", 
+    "sensor_type": G_DS18B20, 
     "sensor_id": "%08X-%08X", 
     "value": "%f"
   })", G_address[1], G_address[0], temp);
